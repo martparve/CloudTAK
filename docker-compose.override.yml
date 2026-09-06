@@ -21,6 +21,12 @@ services:
         extra_hosts:
             - "${CLOUDTAK_HOSTNAME}:host-gateway"
             - "tiles.${CLOUDTAK_HOSTNAME}:host-gateway"
+        # OpenTAKServer uses its own CA for 8089/8443/8446. Trust it inside the api
+        # container so Node accepts the TAK server certificate.
+        volumes:
+            - ./deploy/certs/ots-ca.pem:/etc/ssl/certs/ots-ca.pem:ro
+        environment:
+            - NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ots-ca.pem
 
     events:
         extra_hosts:
