@@ -55,3 +55,14 @@ git fetch upstream
 git checkout main && git merge --ff-only upstream/main && git push origin main
 git checkout taara && git merge main   # resolve conflicts if any, then push
 ```
+
+## OpenTAKServer specifics
+
+- OTS (1.7.13) lacks `GET /Marti/api/version`, which CloudTAK calls after login. The OTS nginx has a static stub for it
+  on ports 8443 and 8446. Without it every login fails with a 404.
+- OTS answers TAK pings with a copy of the ping instead of a `t-x-c-t-r` pong, so node-tak never marks the stream
+  "open" and the admin panel shows the connection as **dead** even though CoT traffic flows. Cosmetic until fixed upstream.
+- The OTS server certificate is issued for the name `opentakserver`; the api container maps that name to the OTS IP
+  (`OTS_HOSTNAME`/`OTS_IP` in `.env`) and trusts the OTS CA (`deploy/certs/ots-ca.pem`, `NODE_EXTRA_CA_CERTS`).
+- Initial configuration was done with `PATCH /api/server` (name, `ssl://opentakserver:8089`, `https://opentakserver:8443`,
+  `https://opentakserver:8446`, the muhv_1 client cert/key as admin auth, and muhv_1's TAK login as first system admin).
