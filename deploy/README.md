@@ -36,8 +36,8 @@ in `/etc/caddy/Caddyfile`.
 3. On the server a systemd timer runs `deploy/taara-deploy.sh` every 3 minutes. When
    `origin/taara` has moved it fast-forwards, runs `docker compose build`, then
    `docker compose up -d`. A failed build leaves the running stack untouched.
-4. Log: `/var/log/taara-deploy.log` on the server. Force a redeploy with
-   `sudo FORCE=1 systemctl start taara-deploy.service`.
+4. Log: `/var/log/taara-deploy.log` on the server. Force a redeploy of the current commit with
+   `FORCE=1 /home/ubuntu/CloudTAK/deploy/taara-deploy.sh` (as the ubuntu user).
 
 Rollback: `git revert` on `taara` and push. The timer deploys the revert.
 

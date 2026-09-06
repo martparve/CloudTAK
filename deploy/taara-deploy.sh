@@ -12,6 +12,7 @@ REPO_DIR=${REPO_DIR:-/home/ubuntu/CloudTAK}
 BRANCH=${BRANCH:-taara}
 REMOTE=${REMOTE:-origin}
 LOG=${LOG:-/var/log/taara-deploy.log}
+# shellcheck source=/dev/null
 [ -f /etc/taara-deploy.env ] && source /etc/taara-deploy.env
 
 exec >>"$LOG" 2>&1
