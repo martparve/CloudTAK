@@ -21,6 +21,10 @@ services:
         extra_hosts:
             - "${CLOUDTAK_HOSTNAME}:host-gateway"
             - "tiles.${CLOUDTAK_HOSTNAME}:host-gateway"
+            # The OTS server certificate is issued for the name "opentakserver" (no IP SAN).
+            # Point that name at the OTS IP so TLS hostname verification passes when CloudTAK
+            # is configured with ssl://opentakserver:8089, https://opentakserver:8443, :8446.
+            - "${OTS_HOSTNAME:-opentakserver}:${OTS_IP}"
         # OpenTAKServer uses its own CA for 8089/8443/8446. Trust it inside the api
         # container so Node accepts the TAK server certificate.
         volumes:
