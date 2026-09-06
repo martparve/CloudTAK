@@ -1,0 +1,11 @@
+[Unit]
+Description=TAARA CloudTAK pull-based deploy (git fetch + docker compose up)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=docker
+WorkingDirectory=/home/ubuntu/CloudTAK
+ExecStart=/home/ubuntu/CloudTAK/deploy/taara-deploy.sh

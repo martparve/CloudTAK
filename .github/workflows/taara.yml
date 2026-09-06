@@ -1,0 +1,45 @@
+name: TAARA deploy checks
+
+on:
+  push:
+    branches: [taara]
+  pull_request:
+    branches: [taara]
+
+permissions:
+  contents: read
+
+jobs:
+  compose-and-scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate docker compose files
+        env:
+          CLOUDTAK_HOSTNAME: map.example.com
+          API_URL: https://map.example.com
+          PMTILES_URL: https://tiles.map.example.com
+          SigningSecret: ci
+          ASSET_BUCKET: cloudtak
+          POSTGRES: postgres://docker:docker@postgis:5432/gis
+        run: docker compose -f docker-compose.yml -f docker-compose.override.yml config --quiet
+
+      - name: Shellcheck deploy script
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          shellcheck deploy/taara-deploy.sh
+
+  tiles-task:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+      - name: Lint and build the tiles task
+        working-directory: tasks/pmtiles
+        run: |
+          npm ci
+          npm run lint
+          npm run build

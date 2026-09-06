@@ -1,0 +1,28 @@
+# Same as Dockerfile.compose but on a glibc (Debian) base.
+# @mapbox/vtquery ships prebuilt glibc binaries; on Alpine/musl arm64 they fail with
+# "__libc_single_threaded: symbol not found". Build tools are present so node-pre-gyp
+# can fall back to compiling from source if no prebuilt binary matches.
+FROM node:26-bookworm-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 make g++ ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+EXPOSE 5002
+
+ENV APP_ROOT=/workspace
+
+WORKDIR $APP_ROOT/tasks/pmtiles
+
+COPY tasks/pmtiles/package*.json ./
+COPY api/derived-types.d.ts $APP_ROOT/api/derived-types.d.ts
+
+RUN npm install
+
+COPY tasks/pmtiles/ ./
+
+RUN npm run lint \
+    && npm run test \
+    && npm run build
+
+CMD ["npm", "run", "prod"]

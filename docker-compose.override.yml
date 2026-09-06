@@ -1,0 +1,31 @@
+# TAARA deployment overrides for docker-compose.yml.
+# Docker Compose loads this file automatically next to docker-compose.yml.
+#
+# Why these exist:
+#   - The host is an arm64 (Oracle Ampere A1) VM. postgis/postgis:*-alpine and the
+#     prebuilt @mapbox/vtquery binary used by the tiles task are amd64/glibc only.
+#   - Containers cannot reach the VM's own public IP (Oracle NATs it), so anything
+#     that calls API_URL from inside Docker must resolve the hostname to the host.
+#     CLOUDTAK_HOSTNAME is set in .env (e.g. map.79-72-16-120.sslip.io).
+services:
+    postgis:
+        # Multi-arch (arm64 + amd64) PostGIS 17 / 3.4, same major.minor as upstream.
+        image: imresamu/postgis:17-3.4-alpine
+
+    tiles:
+        build:
+            context: .
+            dockerfile: ./tasks/pmtiles/Dockerfile.arm64
+
+    api:
+        extra_hosts:
+            - "${CLOUDTAK_HOSTNAME}:host-gateway"
+            - "tiles.${CLOUDTAK_HOSTNAME}:host-gateway"
+
+    events:
+        extra_hosts:
+            - "${CLOUDTAK_HOSTNAME}:host-gateway"
+
+    media:
+        extra_hosts:
+            - "${CLOUDTAK_HOSTNAME}:host-gateway"
