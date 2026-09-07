@@ -1,6 +1,6 @@
 # TAARA CloudTAK deployment
 
-This fork (`martparve/CloudTAK`) carries our deployment changes on the `taara` branch.
+This fork (`martparve/est-webtak`, GitHub name est-webtak) carries our deployment changes on the `taara` branch.
 `main` mirrors upstream `dfpc-coe/CloudTAK` and stays untouched.
 
 ## Where it runs
