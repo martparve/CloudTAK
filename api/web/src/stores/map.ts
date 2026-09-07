@@ -27,6 +27,7 @@ import RoutingControl from '../lib/routing/main.ts';
 import type { NavigationState, NavigationDirection } from '../lib/routing/main.ts';
 import { syncPushToken } from '../base/push.ts';
 import { normalizePointType } from '../utils/point-type.ts';
+import { buildMgrsGrid } from '../utils/mgrsGrid.ts';
 import { WorkerMessageType, LocationState } from '../utils/events.ts';
 import type { WorkerMessage } from '../utils/events.ts';
 import Overlay from '../base/overlay-class.ts';
@@ -54,6 +55,16 @@ const MAPLIBRE_WORKER_PROBE_TIMEOUT_MS = 1000;
 const MAPLIBRE_WORKER_PROBE_URL = new URL('/maplibre-worker-probe.mjs', window.location.href).href;
 const COT_SOURCE_RESYNC_TIMEOUT_MS = 10000;
 const MAPLIBRE_RECOVERY_RELOAD_KEY = 'cloudtak::maplibre-recovery-reloaded';
+const GRID_SOURCE_ID = 'cloudtak-mgrs-grid';
+const GRID_PREF_KEY = 'cloudtak::grid-enabled';
+
+function readGridPreference(): boolean {
+    try {
+        return localStorage.getItem(GRID_PREF_KEY) === '1';
+    } catch {
+        return false;
+    }
+}
 
 function reloadAfterMapLibreFailure(error: unknown): void {
     try {
@@ -142,6 +153,8 @@ export const useMapStore = defineStore('cloudtak', {
         };
         distanceUnit: string;
         coordFormat: string;
+        // MGRS/UTM grid overlay toggle (persisted per browser)
+        gridEnabled: boolean;
         defaultPointType: string;
         manualLocationMode: boolean;
         isBackgrounded: boolean;
@@ -215,6 +228,7 @@ export const useMapStore = defineStore('cloudtak', {
             zoom: 'conditional',
             distanceUnit: 'meter',
             coordFormat: 'dd',
+            gridEnabled: readGridPreference(),
             defaultPointType: 'u-d-p',
             toastOffset: { x: 70, y: 60 },
             manualLocationMode: false,
@@ -569,6 +583,105 @@ export const useMapStore = defineStore('cloudtak', {
             if (!overlay) return;
 
             await overlay.update({ visible: !overlay.visible });
+        },
+
+        /**
+         * Show or hide the MGRS/UTM grid overlay. The preference is stored in
+         * localStorage so it survives reloads on this device.
+         */
+        toggleGrid: function(): void {
+            this.gridEnabled = !this.gridEnabled;
+            try {
+                localStorage.setItem(GRID_PREF_KEY, this.gridEnabled ? '1' : '0');
+            } catch {
+                // Storage may be unavailable (private mode); the toggle still works for this session.
+            }
+            this.refreshGrid();
+        },
+
+        /**
+         * Create the grid source and layers once the map style exists. Layers
+         * are inserted beneath the Map Features (CoT) layers so markers stay
+         * on top of grid lines and labels.
+         */
+        ensureGridLayers: function(): void {
+            if (!this.map || this.map.getSource(GRID_SOURCE_ID)) return;
+
+            this.map.addSource(GRID_SOURCE_ID, {
+                type: 'geojson',
+                data: { type: 'FeatureCollection', features: [] }
+            });
+
+            const before = this.map.getStyle().layers.find((l) => l.id.startsWith('-1-'))?.id;
+
+            const layers: LayerSpecification[] = [{
+                id: `${GRID_SOURCE_ID}-lines`,
+                type: 'line',
+                source: GRID_SOURCE_ID,
+                filter: ['==', ['get', 'kind'], 'line'],
+                paint: {
+                    'line-color': ['case', ['==', ['get', 'weight'], 'major'], '#ff9f1c', '#ffbf69'],
+                    'line-width': ['case', ['==', ['get', 'weight'], 'major'], 2, 0.8],
+                    'line-opacity': 0.9,
+                }
+            }, {
+                id: `${GRID_SOURCE_ID}-square-labels`,
+                type: 'symbol',
+                source: GRID_SOURCE_ID,
+                filter: ['all', ['==', ['get', 'kind'], 'label'], ['==', ['get', 'role'], 'square']],
+                layout: {
+                    'text-field': ['get', 'text'],
+                    'text-size': 16,
+                    'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+                    'text-allow-overlap': false,
+                },
+                paint: {
+                    'text-color': '#ff9f1c',
+                    'text-halo-color': '#000000',
+                    'text-halo-width': 1.5,
+                }
+            }, {
+                id: `${GRID_SOURCE_ID}-value-labels`,
+                type: 'symbol',
+                source: GRID_SOURCE_ID,
+                filter: ['all', ['==', ['get', 'kind'], 'label'], ['==', ['get', 'role'], 'value']],
+                layout: {
+                    'text-field': ['get', 'text'],
+                    'text-size': 11,
+                    'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
+                    'text-allow-overlap': false,
+                },
+                paint: {
+                    'text-color': '#ffbf69',
+                    'text-halo-color': '#000000',
+                    'text-halo-width': 1,
+                }
+            }];
+
+            for (const layer of layers) {
+                if (before) this.map.addLayer(layer, before);
+                else this.map.addLayer(layer);
+            }
+
+            this.refreshGrid();
+        },
+
+        /**
+         * Recompute the grid for the current view. Cheap enough to run on every
+         * moveend; clears the source when the grid is switched off.
+         */
+        refreshGrid: function(): void {
+            if (!this.map) return;
+            const source = this.map.getSource(GRID_SOURCE_ID) as GeoJSONSource | undefined;
+            if (!source) return;
+
+            if (!this.gridEnabled) {
+                source.setData({ type: 'FeatureCollection', features: [] });
+                return;
+            }
+
+            const b = this.map.getBounds();
+            source.setData(buildMgrsGrid([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()], this.map.getZoom()));
         },
 
         returnHome: async function(): Promise<void> {
@@ -1280,6 +1393,8 @@ export const useMapStore = defineStore('cloudtak', {
             })
 
             map.on('moveend', async () => {
+                this.refreshGrid();
+
                 if (this.draw.mode !== DrawToolMode.STATIC) {
                     this.draw.snapping = await this.worker.db.snapping(this.map.getBounds().toArray());
                 } else {
@@ -1514,6 +1629,8 @@ export const useMapStore = defineStore('cloudtak', {
             }));
 
             await FeatureVisibility.apply();
+
+            this.ensureGridLayers();
 
             // Mission loading is fire-and-forget so it does not block map init;
             // each overlay is marked `loading` while its data is fetched.

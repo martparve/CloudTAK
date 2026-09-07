@@ -66,3 +66,12 @@ git checkout taara && git merge main   # resolve conflicts if any, then push
   (`OTS_HOSTNAME`/`OTS_IP` in `.env`) and trusts the OTS CA (`deploy/certs/ots-ca.pem`, `NODE_EXTRA_CA_CERTS`).
 - Initial configuration was done with `PATCH /api/server` (name, `ssl://opentakserver:8089`, `https://opentakserver:8443`,
   `https://opentakserver:8446`, the muhv_1 client cert/key as admin auth, and muhv_1's TAK login as first system admin).
+
+## TAARA features on top of upstream
+
+- **MGRS grid overlay**: grid button (4x4 icon) in the map's right-hand control stack. Draws UTM/MGRS lines for the
+  visible area: 100 km squares when zoomed out, 10 km and 1 km lines when zoomed in, with square ids (e.g. "35V MF")
+  and km values. Generated client-side in `api/web/src/utils/mgrsGrid.ts`, layers managed in `stores/map.ts`
+  (`toggleGrid`, `refreshGrid`, `ensureGridLayers`), preference stored in localStorage.
+- **Coordinate widgets honour Settings > Display > Coordinate Format** (`util/Coordinate.vue`), so Query Mode and
+  feature panels open in MGRS when that is the chosen format.

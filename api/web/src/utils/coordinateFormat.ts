@@ -203,7 +203,17 @@ function parseMGRS(text: string): [number, number] {
     return utmToLatLng(zoneNum, zoneLetter, easting, northing);
 }
 
-function latLngToUTM(latitude: number, longitude: number): {
+/**
+ * The two-letter 100 km square identifier for a UTM position (e.g. "MF").
+ * Exported for the MGRS grid overlay.
+ */
+export function mgrsSquareId(zoneNum: number, easting: number, northing: number): string {
+    const eastingBand = EASTING_SETS[(zoneNum - 1) % EASTING_SETS.length];
+    const northingBand = NORTHING_SETS[(zoneNum - 1) % NORTHING_SETS.length];
+    return `${eastingBand[Math.floor(easting / 100000) - 1]}${northingBand[Math.floor(northing / 100000) % 20]}`;
+}
+
+export function latLngToUTM(latitude: number, longitude: number): {
     zoneNum: number;
     zoneLetter: string;
     easting: number;
@@ -260,7 +270,7 @@ function latLngToUTM(latitude: number, longitude: number): {
     };
 }
 
-function utmToLatLng(zoneNum: number, zoneLetter: string, easting: number, northing: number): [number, number] {
+export function utmToLatLng(zoneNum: number, zoneLetter: string, easting: number, northing: number): [number, number] {
     const x = easting - 500000;
     let y = northing;
 
@@ -332,7 +342,7 @@ function toDegrees(rad: number): number {
     return rad * 180 / Math.PI;
 }
 
-function latitudeToZoneLetter(latitude: number): string | null {
+export function latitudeToZoneLetter(latitude: number): string | null {
     const zoneLetters = 'CDEFGHJKLMNPQRSTUVWXX';
 
     if (-80 <= latitude && latitude <= 84) {
@@ -342,7 +352,7 @@ function latitudeToZoneLetter(latitude: number): string | null {
     return null;
 }
 
-function latLonToZoneNumber(latitude: number, longitude: number): number {
+export function latLonToZoneNumber(latitude: number, longitude: number): number {
     if (56 <= latitude && latitude < 64 && 3 <= longitude && longitude < 12) return 32;
 
     if (72 <= latitude && latitude <= 84 && longitude >= 0) {

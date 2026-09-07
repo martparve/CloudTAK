@@ -241,6 +241,20 @@
                     </div>
 
                     <div
+                        role='button'
+                        tabindex='0'
+                        :title='mapStore.gridEnabled ? "Hide MGRS Grid" : "Show MGRS Grid"'
+                        class='cloudtak-ctrl-btn'
+                        @click='mapStore.toggleGrid()'
+                    >
+                        <IconGrid4x4
+                            :size='24'
+                            stroke='2'
+                            :color='mapStore.gridEnabled ? "#1E90FF" : undefined'
+                        />
+                    </div>
+
+                    <div
                         v-if='
                             (mapStore.radial.cot && mapStore.locked.length >= 2)
                                 || (!mapStore.radial.cot && mapStore.locked.length >= 1)
@@ -470,6 +484,7 @@ import {
     IconLockAccess,
     IconLocation,
     IconMountain,
+    IconGrid4x4,
     IconCompass,
     IconSearch,
     IconMinus,
