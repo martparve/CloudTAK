@@ -51,6 +51,9 @@ import {
     IconLabel
 } from '@tabler/icons-vue';
 import { ref, computed, watch } from 'vue';
+import { useMapStore } from '../../../stores/map.ts';
+
+const mapStore = useMapStore();
 
 const props = defineProps({
     label: {
@@ -88,8 +91,11 @@ const emit = defineEmits([
     'update:modelValue',
 ]);
 
+// Start in the user's preferred coordinate format (Settings > Display) when the
+// caller allows it; otherwise fall back to the first allowed mode.
+const preferred = mapStore.coordFormat as CoordMode;
 const config = ref({
-    mode: (props.modes[0] || 'dd') as CoordMode
+    mode: (props.modes.includes(preferred) ? preferred : (props.modes[0] || 'dd')) as CoordMode
 });
 
 const availableModes = computed(() => {
