@@ -75,3 +75,21 @@ git checkout taara && git merge main   # resolve conflicts if any, then push
   (`toggleGrid`, `refreshGrid`, `ensureGridLayers`), preference stored in localStorage.
 - **Coordinate widgets honour Settings > Display > Coordinate Format** (`util/Coordinate.vue`), so Query Mode and
   feature panels open in MGRS when that is the chosen format.
+
+## End-to-end tests (Playwright)
+
+`api/web/e2e/` holds browser tests that run against a live CloudTAK: login, Display settings (Coordinate Format and the
+MGRS Grid toggle), the grid overlay (lines, labels, 100 m level, persistence), Query Mode opening in MGRS, basemaps,
+the MUHV-TAARA Data Sync mission, and the Admin area for admin users.
+
+Run locally from `api/web`:
+
+```
+npx playwright install chromium          # once
+E2E_USERNAME=e2e_test E2E_PASSWORD=... npm run e2e
+```
+
+`E2E_BASE_URL` defaults to the TAARA deployment. Screenshots land in `api/web/e2e-results/`.
+In CI the `e2e-live` job runs nightly and via "Run workflow", using the repository secrets `E2E_USERNAME` /
+`E2E_PASSWORD` (a low-privilege OTS user `e2e_test` in the MUHV group; password in
+`~/Code/Android/opentakserver/credentials.env`). The map instance is exposed as `window.cloudtakMap` for these tests.

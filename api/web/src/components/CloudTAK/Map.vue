@@ -245,6 +245,7 @@
                         tabindex='0'
                         :title='mapStore.gridEnabled ? "Hide MGRS Grid" : "Show MGRS Grid"'
                         class='cloudtak-ctrl-btn'
+                        data-testid='map-grid-toggle'
                         @click='mapStore.toggleGrid()'
                     >
                         <IconGrid4x4

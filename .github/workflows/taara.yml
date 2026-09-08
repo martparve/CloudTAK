@@ -5,6 +5,10 @@ on:
     branches: [taara]
   pull_request:
     branches: [taara]
+  workflow_dispatch:
+  schedule:
+    # Nightly end-to-end run against the live deployment (04:00 Estonian time)
+    - cron: '0 1 * * *'
 
 permissions:
   contents: read
@@ -37,11 +41,44 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 26
-      - name: Lint the web UI
+      - name: Lint, type-check and unit-test the web UI
         working-directory: api/web
         run: |
           npm ci
           npm run lint
+          npm run check
+          npm run test
+
+  # Browser tests against the LIVE deployment. Runs nightly and on demand, not on
+  # push: the deploy timer on the server needs a few minutes to roll a push out.
+  e2e-live:
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+      - name: Install
+        working-directory: api/web
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Run Playwright against the deployment
+        working-directory: api/web
+        env:
+          E2E_BASE_URL: https://map.79-72-16-120.sslip.io
+          E2E_USERNAME: ${{ secrets.E2E_USERNAME }}
+          E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+        run: npm run e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: |
+            api/web/playwright-report
+            api/web/e2e-results
+          retention-days: 14
 
   tiles-task:
     runs-on: ubuntu-latest

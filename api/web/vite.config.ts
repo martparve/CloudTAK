@@ -132,6 +132,8 @@ export default defineConfig(({ mode }) => {
         test: {
             environment: 'jsdom',
             globals: true,
+            // Playwright specs live in e2e/ and are run with `npm run e2e`
+            exclude: ['**/node_modules/**', '**/dist/**', 'e2e/**'],
             deps: {
                 inline: ['@tak-ps/vue-tabler']
             },
