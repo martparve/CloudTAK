@@ -13,6 +13,41 @@
 
                 <div class='d-flex flex-column gap-2'>
                     <StandardItem
+                        v-if='gridMatchesSearch'
+                        :hover='false'
+                        class='position-relative'
+                        data-testid='display-mgrs-grid'
+                    >
+                        <div class='d-flex flex-column gap-2 px-3 py-3'>
+                            <div class='d-flex align-items-center gap-3'>
+                                <div
+                                    class='d-flex align-items-center justify-content-center rounded-circle bg-black bg-opacity-25 flex-shrink-0'
+                                    style='width: 40px; height: 40px;'
+                                >
+                                    <IconGrid4x4
+                                        :size='24'
+                                        stroke='1.5'
+                                    />
+                                </div>
+                                <div>
+                                    <div class='fw-bold text-white'>
+                                        MGRS Grid
+                                    </div>
+                                    <div class='text-secondary small'>
+                                        Grid lines and coordinates over the map. Stored on this device.
+                                    </div>
+                                </div>
+                            </div>
+                            <div class='col-12'>
+                                <TablerToggle
+                                    :model-value='mapStore.gridEnabled'
+                                    @update:model-value='setGrid($event)'
+                                />
+                            </div>
+                        </div>
+                    </StandardItem>
+
+                    <StandardItem
                         v-for='item of filteredSettings'
                         :key='item.key'
                         :hover='false'
@@ -62,7 +97,7 @@
                     </StandardItem>
 
                     <div
-                        v-if='filteredSettings.length === 0'
+                        v-if='filteredSettings.length === 0 && !gridMatchesSearch'
                         class='text-center text-secondary py-4'
                     >
                         No settings match "{{ search }}"
@@ -90,6 +125,7 @@ import {
     IconRotate,
     IconCircleCheck,
     IconBulb,
+    IconGrid4x4,
 } from '@tabler/icons-vue';
 import MenuTemplate from '../util/MenuTemplate.vue';
 import StandardItem from '../util/StandardItem.vue';
@@ -222,6 +258,17 @@ const filteredSettings = computed(() => {
         item.label.toLowerCase().includes(query)
     );
 });
+
+// The MGRS grid is a device preference (localStorage), not a server profile
+// field, so it is rendered outside the profile-driven list above.
+const gridMatchesSearch = computed(() => {
+    const query = search.value.trim().toLowerCase();
+    return !query || 'mgrs grid'.includes(query);
+});
+
+function setGrid(enabled: boolean) {
+    if (enabled !== mapStore.gridEnabled) mapStore.toggleGrid();
+}
 
 async function getProfile() {
     return {

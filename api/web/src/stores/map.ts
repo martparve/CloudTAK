@@ -614,47 +614,91 @@ export const useMapStore = defineStore('cloudtak', {
 
             const before = this.map.getStyle().layers.find((l) => l.id.startsWith('-1-'))?.id;
 
+            // Lines are drawn twice: a dark casing underneath and a bright line on top,
+            // so the grid is readable over both imagery and light basemaps.
+            const isMajor: mapgl.ExpressionSpecification = ['==', ['get', 'weight'], 'major'];
+            const labelFilter = (role: string): mapgl.FilterSpecification => ['all', ['==', ['get', 'kind'], 'label'], ['==', ['get', 'role'], role]];
+
             const layers: LayerSpecification[] = [{
+                id: `${GRID_SOURCE_ID}-casing`,
+                type: 'line',
+                source: GRID_SOURCE_ID,
+                filter: ['==', ['get', 'kind'], 'line'],
+                layout: { 'line-join': 'round', 'line-cap': 'round' },
+                paint: {
+                    'line-color': '#000000',
+                    'line-width': ['case', isMajor, 4.5, 2.6],
+                    'line-opacity': 0.55,
+                }
+            }, {
                 id: `${GRID_SOURCE_ID}-lines`,
                 type: 'line',
                 source: GRID_SOURCE_ID,
                 filter: ['==', ['get', 'kind'], 'line'],
+                layout: { 'line-join': 'round', 'line-cap': 'round' },
                 paint: {
-                    'line-color': ['case', ['==', ['get', 'weight'], 'major'], '#ff9f1c', '#ffbf69'],
-                    'line-width': ['case', ['==', ['get', 'weight'], 'major'], 2, 0.8],
-                    'line-opacity': 0.9,
+                    'line-color': ['case', isMajor, '#ffd60a', '#ffffff'],
+                    'line-width': ['case', isMajor, 2.2, 1.1],
+                    'line-opacity': 0.95,
                 }
             }, {
+                // Easting values along the top edge of the view
+                id: `${GRID_SOURCE_ID}-easting-labels`,
+                type: 'symbol',
+                source: GRID_SOURCE_ID,
+                filter: labelFilter('easting'),
+                layout: {
+                    'text-field': ['get', 'text'],
+                    'text-size': 15,
+                    'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+                    'text-anchor': 'top',
+                    'text-offset': [0, 0.3],
+                    'text-allow-overlap': true,
+                    'text-ignore-placement': true,
+                },
+                paint: {
+                    'text-color': '#ffffff',
+                    'text-halo-color': '#000000',
+                    'text-halo-width': 2,
+                }
+            }, {
+                // Northing values along the left edge of the view
+                id: `${GRID_SOURCE_ID}-northing-labels`,
+                type: 'symbol',
+                source: GRID_SOURCE_ID,
+                filter: labelFilter('northing'),
+                layout: {
+                    'text-field': ['get', 'text'],
+                    'text-size': 15,
+                    'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+                    'text-anchor': 'left',
+                    'text-offset': [0.4, 0],
+                    'text-allow-overlap': true,
+                    'text-ignore-placement': true,
+                },
+                paint: {
+                    'text-color': '#ffffff',
+                    'text-halo-color': '#000000',
+                    'text-halo-width': 2,
+                }
+            }, {
+                // 100 km square identifier, once per square
                 id: `${GRID_SOURCE_ID}-square-labels`,
                 type: 'symbol',
                 source: GRID_SOURCE_ID,
-                filter: ['all', ['==', ['get', 'kind'], 'label'], ['==', ['get', 'role'], 'square']],
+                filter: labelFilter('square'),
                 layout: {
                     'text-field': ['get', 'text'],
-                    'text-size': 16,
+                    'text-size': 22,
                     'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-                    'text-allow-overlap': false,
+                    'text-allow-overlap': true,
+                    'text-ignore-placement': true,
                 },
                 paint: {
-                    'text-color': '#ff9f1c',
+                    'text-color': '#ffd60a',
                     'text-halo-color': '#000000',
-                    'text-halo-width': 1.5,
-                }
-            }, {
-                id: `${GRID_SOURCE_ID}-value-labels`,
-                type: 'symbol',
-                source: GRID_SOURCE_ID,
-                filter: ['all', ['==', ['get', 'kind'], 'label'], ['==', ['get', 'role'], 'value']],
-                layout: {
-                    'text-field': ['get', 'text'],
-                    'text-size': 11,
-                    'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
-                    'text-allow-overlap': false,
-                },
-                paint: {
-                    'text-color': '#ffbf69',
-                    'text-halo-color': '#000000',
-                    'text-halo-width': 1,
+                    'text-halo-width': 2.5,
+                    'text-opacity': 0.9,
                 }
             }];
 
@@ -1256,6 +1300,9 @@ export const useMapStore = defineStore('cloudtak', {
             this.loadingStage = 'Creating map…';
             mapgl.setWorkerUrl(maplibreWorkerUrl);
             const map = new mapgl.Map(init);
+
+            // Expose the map instance for end-to-end tests (Playwright) and console debugging.
+            (window as unknown as { cloudtakMap?: mapgl.Map }).cloudtakMap = map;
 
             // Tag TileJSON load failures onto the owning overlay; per-tile 404s are not errors
             map.on('error', (e) => {
