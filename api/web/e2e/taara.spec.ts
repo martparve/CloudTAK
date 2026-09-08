@@ -84,6 +84,12 @@ test.describe('TAARA CloudTAK', () => {
         await expect(page.getByTestId('map-grid-toggle')).toHaveAttribute('title', 'Hide MGRS Grid');
         await expect.poll(() => sourceFeatureCount(page, GRID_SOURCE), { timeout: 20_000 }).toBeGreaterThan(0);
 
+        // A "1 km scale bar" view still gets the 1 km grid, with two-digit labels
+        await flyTo(page, RUMMU, 12.5);
+        await expect.poll(() => sourceFeatureCount(page, GRID_SOURCE), { timeout: 20_000 }).toBeGreaterThan(10);
+        await expect.poll(labels).toEqual(expect.arrayContaining([expect.stringMatching(/^easting:\d{2}$/)]));
+        await page.screenshot({ path: 'e2e-results/grid-1km-wide.png' });
+
         // Leave it on for the humans
     });
 

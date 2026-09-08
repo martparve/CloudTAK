@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildMgrsGrid, gridIntervalForZoom, labelDigits, zoneLongitudeBand, latLngToUTMInZone } from './mgrsGrid.ts';
+import { buildMgrsGrid, gridIntervalForZoom, labelDigits, labelText, zoneLongitudeBand, latLngToUTMInZone } from './mgrsGrid.ts';
 import { latLngToUTM } from './coordinateFormat.ts';
 
 type Props = { kind: string; role?: string; text?: string };
@@ -8,19 +8,30 @@ describe('mgrsGrid', () => {
     // Rummu, Estonia: UTM zone 35V
     const estonia: [number, number, number, number] = [24.1, 59.1, 24.9, 59.5];
 
-    it('picks finer intervals as zoom increases', () => {
-        expect(gridIntervalForZoom(6)).toBe(100000);
-        expect(gridIntervalForZoom(10)).toBe(10000);
-        expect(gridIntervalForZoom(14)).toBe(1000);
-        expect(gridIntervalForZoom(16)).toBe(100);
-        expect(gridIntervalForZoom(19)).toBe(100);
+    it('picks the finest interval that keeps lines readable on screen', () => {
+        const lat = 59.3;
+        expect(gridIntervalForZoom(6, lat)).toBe(100000);
+        expect(gridIntervalForZoom(10, lat)).toBe(10000);
+        // A "1 km" scale bar view in Estonia: 1 km lines are ~70 px apart
+        expect(gridIntervalForZoom(12.5, lat)).toBe(1000);
+        expect(gridIntervalForZoom(14, lat)).toBe(1000);
+        expect(gridIntervalForZoom(15.5, lat)).toBe(100);
+        expect(gridIntervalForZoom(19, lat)).toBe(100);
+        // At the equator the same zoom covers more ground, so 100 m lines arrive later
+        expect(gridIntervalForZoom(15.5, 0)).toBe(1000);
+        expect(gridIntervalForZoom(16.5, 0)).toBe(100);
     });
 
-    it('labels values with the right number of digits', () => {
+    it('labels lines with the leading digits of the MGRS value', () => {
         expect(labelDigits(100000)).toBe(0);
-        expect(labelDigits(10000)).toBe(1);
+        expect(labelDigits(10000)).toBe(2);
         expect(labelDigits(1000)).toBe(2);
         expect(labelDigits(100)).toBe(3);
+        // Easting 583 227 in square LF reads "83227" on the readout
+        expect(labelText(580000, 10000)).toBe('80');
+        expect(labelText(583000, 1000)).toBe('83');
+        expect(labelText(583200, 100)).toBe('832');
+        expect(labelText(6500000, 1000)).toBe('00');
     });
 
     it('computes zone longitude bands', () => {
@@ -46,7 +57,7 @@ describe('mgrsGrid', () => {
         expect(lines.length).toBeGreaterThan(10);
         expect(eastings.length).toBeGreaterThan(2);
         expect(northings.length).toBeGreaterThan(2);
-        expect(eastings.every((p) => /^\d$/.test(p.text || ''))).toBe(true);
+        expect(eastings.every((p) => /^\d{2}$/.test(p.text || ''))).toBe(true);
         expect(squares.some((p) => (p.text || '').startsWith('35V '))).toBe(true);
 
         // Every line vertex should be inside zone 35's longitude band.
@@ -87,6 +98,17 @@ describe('mgrsGrid', () => {
         expect(lines.length).toBeGreaterThan(15);
         expect(labels.length).toBeGreaterThan(5);
         expect(labels.every((p) => /^\d{3}$/.test(p.text || ''))).toBe(true);
+    });
+
+    it('puts the square id in the top-left corner of the view when one square fills it', () => {
+        const [w, s, e, n] = estonia;
+        const grid = buildMgrsGrid(estonia, 13);
+        const squares = grid.features.filter((f) => (f.properties as Props).role === 'square');
+        expect(squares).toHaveLength(1);
+        const [lng, lat] = (squares[0].geometry as GeoJSON.Point).coordinates;
+        expect(lng).toBeCloseTo(w + (e - w) * 0.08, 6);
+        expect(lat).toBeCloseTo(n - (n - s) * 0.10, 6);
+        expect((squares[0].properties as Props).text).toBe('35V LF');
     });
 
     it('spans two zones when the view crosses a zone boundary', () => {

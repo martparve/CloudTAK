@@ -43,20 +43,46 @@ export interface GridLabelProperties {
     text: string;
 }
 
-/** Grid spacing in metres for a given zoom level. */
-export function gridIntervalForZoom(zoom: number): GridInterval {
-    if (zoom < 9) return 100000;
-    if (zoom < 13) return 10000;
-    if (zoom < 16) return 1000;
-    return 100;
+/** Finest grid spacing whose lines are at least this far apart on screen (CSS px). */
+const MIN_LINE_SPACING_PX = 48;
+
+/** Web Mercator ground resolution at zoom 0 on the equator, metres per 256 px tile pixel. */
+const EQUATOR_METRES_PER_PIXEL_Z0 = 156543.03392;
+
+/**
+ * Grid spacing in metres for a zoom level at a latitude: the finest interval
+ * whose lines still sit at least MIN_LINE_SPACING_PX apart on screen. Picking
+ * by on-screen spacing (not fixed zoom cut-offs) keeps the grid dense enough
+ * to read at every zoom and at every latitude.
+ */
+export function gridIntervalForZoom(zoom: number, latitude = 0): GridInterval {
+    const metresPerPixel = EQUATOR_METRES_PER_PIXEL_Z0 * Math.cos(latitude * Math.PI / 180) / Math.pow(2, zoom);
+    for (const interval of [100, 1000, 10000] as GridInterval[]) {
+        if (interval / metresPerPixel >= MIN_LINE_SPACING_PX) return interval;
+    }
+    return 100000;
 }
 
-/** Number of digits used for easting/northing value labels at an interval. */
+/**
+ * Number of digits used for easting/northing value labels at an interval.
+ * Labels are the leading digits of the 5-digit MGRS value within the 100 km
+ * square, so they read straight off the coordinate readout: at 1 km spacing
+ * "83" is the "83" of "35V LF 83227 65177"; at 100 m spacing "832".
+ * 10 km lines also get two digits ("80") rather than a lone "8".
+ */
 export function labelDigits(interval: GridInterval): number {
-    if (interval === 10000) return 1;
-    if (interval === 1000) return 2;
+    if (interval === 10000 || interval === 1000) return 2;
     if (interval === 100) return 3;
     return 0;
+}
+
+/** Text for the line at UTM value `v` (easting or northing) at an interval. */
+export function labelText(v: number, interval: GridInterval): string {
+    const digits = labelDigits(interval);
+    if (digits === 0) return '';
+    const inSquare = ((v % 100000) + 100000) % 100000;
+    const unit = digits === 3 ? 100 : 1000;
+    return String(Math.floor(inSquare / unit)).padStart(digits, '0');
 }
 
 /** Latitude limits of the UTM system. */
@@ -78,8 +104,6 @@ export function zoneLongitudeBand(zoneNum: number): [number, number] {
  */
 export function buildMgrsGrid(bounds: GridBounds, zoom: number): FeatureCollection<LineString | Point, GridLineProperties | GridLabelProperties> {
     const features: GridFeature[] = [];
-    const interval = gridIntervalForZoom(zoom);
-
     const west = Math.max(bounds[0], -180);
     const east = Math.min(bounds[2], 180);
     const south = Math.max(bounds[1], UTM_LAT_MIN);
@@ -90,6 +114,8 @@ export function buildMgrsGrid(bounds: GridBounds, zoom: number): FeatureCollecti
     const midLat = (south + north) / 2;
     const zoneLetter = latitudeToZoneLetter(midLat);
     if (!zoneLetter) return { type: 'FeatureCollection', features };
+
+    const interval = gridIntervalForZoom(zoom, midLat);
 
     const firstZone = latLonToZoneNumber(midLat, west);
     const lastZone = latLonToZoneNumber(midLat, Math.min(east, 179.999));
@@ -150,7 +176,7 @@ function gridForZone(zoneNum: number, zoneLetter: string, bounds: GridBounds, in
     const inBand = (lng: number) => lng >= bandWest - 1e-9 && lng <= bandEast + 1e-9;
     const inView = (lat: number, lng: number) => lat >= south && lat <= north && lng >= bounds[0] && lng <= bounds[2];
     const digits = labelDigits(interval);
-    const valueText = (v: number) => String(Math.floor((v % 100000) / interval)).padStart(digits, '0');
+    const valueText = (v: number) => labelText(v, interval);
 
     // Lines of constant easting (run north-south). Label at the top edge.
     for (let e = minE; e <= maxE; e += interval) {
@@ -200,15 +226,40 @@ function gridForZone(zoneNum: number, zoneLetter: string, bounds: GridBounds, in
         }
     }
 
-    // One 100 km square id per square, at the centre of the square's visible portion.
+    // One 100 km square id per square, tucked into the top-left corner of the
+    // square's visible portion, next to the edge labels it belongs with, like
+    // the margin of a printed map sheet. Falls back to the centre of the
+    // visible portion when the corner point lands in a different square.
     const squareStart = (v: number) => Math.floor(v / 100000) * 100000;
+    const cornerPadLng = (east - west) * 0.08;
+    const cornerPadLat = (north - south) * 0.10;
     for (let e = squareStart(viewMinE); e <= viewMaxE; e += 100000) {
         for (let n = squareStart(viewMinN); n <= viewMaxN; n += 100000) {
-            const cE = (Math.max(e, viewMinE) + Math.min(e + 100000, viewMaxE)) / 2;
-            const cN = (Math.max(n, viewMinN) + Math.min(n + 100000, viewMaxN)) / 2;
-            const [lat, lng] = utmToLatLng(zoneNum, zoneLetter, cE, cN);
-            if (!inBand(lng) || !inView(lat, lng)) continue;
-            features.push(labelFeature([lng, lat], 'square', `${zoneNum}${zoneLetter} ${mgrsSquareId(zoneNum, cE, cN)}`));
+            const eL = Math.max(e, viewMinE);
+            const eR = Math.min(e + 100000, viewMaxE);
+            const nB = Math.max(n, viewMinN);
+            const nT = Math.min(n + 100000, viewMaxN);
+            if (eL >= eR || nB >= nT) continue;
+            const id = `${zoneNum}${zoneLetter} ${mgrsSquareId(zoneNum, (eL + eR) / 2, (nB + nT) / 2)}`;
+
+            // Lat/lng box of the visible portion, clamped to the view.
+            const corners = [[eL, nB], [eL, nT], [eR, nB], [eR, nT]].map(([ce, cn]) => utmToLatLng(zoneNum, zoneLetter, ce, cn));
+            const bw = Math.max(west, Math.min(...corners.map((c) => c[1])));
+            const be = Math.min(east, Math.max(...corners.map((c) => c[1])));
+            const bs = Math.max(south, Math.min(...corners.map((c) => c[0])));
+            const bn = Math.min(north, Math.max(...corners.map((c) => c[0])));
+            if (bw >= be || bs >= bn) continue;
+
+            const lng = Math.min(bw + cornerPadLng, (bw + be) / 2);
+            const lat = Math.max(bn - cornerPadLat, (bs + bn) / 2);
+            const at = latLngToUTMInZone(lat, lng, zoneNum, zoneLetter);
+            if (squareStart(at.easting) === e && squareStart(at.northing) === n && inBand(lng) && inView(lat, lng)) {
+                features.push(labelFeature([lng, lat], 'square', id));
+                continue;
+            }
+
+            const [cLat, cLng] = utmToLatLng(zoneNum, zoneLetter, (eL + eR) / 2, (nB + nT) / 2);
+            if (inBand(cLng) && inView(cLat, cLng)) features.push(labelFeature([cLng, cLat], 'square', id));
         }
     }
 

@@ -682,23 +682,25 @@ export const useMapStore = defineStore('cloudtak', {
                     'text-halo-width': 2,
                 }
             }, {
-                // 100 km square identifier, once per square
+                // 100 km square identifier (e.g. "35V LF"), a tag in the top-left
+                // corner of each square's visible portion, beside the edge labels
                 id: `${GRID_SOURCE_ID}-square-labels`,
                 type: 'symbol',
                 source: GRID_SOURCE_ID,
                 filter: labelFilter('square'),
                 layout: {
                     'text-field': ['get', 'text'],
-                    'text-size': 22,
+                    'text-size': 14,
                     'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+                    'text-anchor': 'top-left',
+                    'text-letter-spacing': 0.05,
                     'text-allow-overlap': true,
                     'text-ignore-placement': true,
                 },
                 paint: {
                     'text-color': '#ffd60a',
                     'text-halo-color': '#000000',
-                    'text-halo-width': 2.5,
-                    'text-opacity': 0.9,
+                    'text-halo-width': 2,
                 }
             }];
 
