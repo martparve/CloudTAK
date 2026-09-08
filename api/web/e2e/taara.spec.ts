@@ -106,6 +106,48 @@ test.describe('TAARA CloudTAK', () => {
         await page.screenshot({ path: 'e2e-results/query-mode.png' });
     });
 
+    test('grid stays above an opaque raster basemap after switching to Maa-amet ortofoto', async ({ page, request, baseURL }) => {
+        // Remember the current basemap so the shared test user is left as found
+        const token = await apiToken(request, baseURL!);
+        const auth = { headers: { Authorization: `Bearer ${token}` } };
+        const overlays = await (await request.get(`${baseURL}/api/profile/overlay`, auth)).json() as { items?: Array<{ mode: string; mode_id: string }> } | Array<{ mode: string; mode_id: string }>;
+        const current = (Array.isArray(overlays) ? overlays : overlays.items || []).find((o) => o.mode === 'basemap');
+        const originalName = current ? ((await (await request.get(`${baseURL}/api/basemap/${current.mode_id}`, auth)).json()) as { name: string }).name : undefined;
+
+        await flyTo(page, RUMMU, 13);
+        const toggle = page.getByTestId('map-grid-toggle');
+        if (await page.evaluate((k) => localStorage.getItem(k) !== '1', GRID_PREF_KEY)) await toggle.click();
+        await expect.poll(() => sourceFeatureCount(page, GRID_SOURCE), { timeout: 20_000 }).toBeGreaterThan(10);
+
+        const gridAboveRasters = () => page.evaluate((gridId) => {
+            const map = (window as unknown as { cloudtakMap: { getStyle: () => { layers: Array<{ id: string; type: string; layout?: { visibility?: string } }> } } }).cloudtakMap;
+            const layers = map.getStyle().layers;
+            const grid = layers.findIndex((l) => l.id === gridId);
+            const rasters = layers.map((l, i) => ({ l, i })).filter(({ l }) => l.type === 'raster' && l.layout?.visibility !== 'none');
+            return { grid, rasters: rasters.length, below: rasters.every(({ i }) => i < grid) };
+        }, `${GRID_SOURCE}-casing`);
+
+        // Switching replaces the basemap layers asynchronously: wait until a
+        // raster layer is back, then it must sit below the grid.
+        const rasterBackBelowGrid = async () => {
+            const r = await gridAboveRasters();
+            return r.rasters > 0 ? r.below : 'no raster layer yet';
+        };
+        await page.goto('/menu/basemaps');
+        await waitForMap(page);
+        try {
+            await page.getByText('Maa-amet ortofoto').first().click();
+            await expect.poll(rasterBackBelowGrid, { timeout: 30_000 }).toBe(true);
+            await page.screenshot({ path: 'e2e-results/grid-ortofoto.png' });
+        } finally {
+            // Put the shared test user's basemap back even when the assertion failed
+            if (originalName && originalName !== 'Maa-amet ortofoto') {
+                await page.getByText(originalName, { exact: true }).first().click();
+                await expect.poll(rasterBackBelowGrid, { timeout: 30_000 }).toBe(true);
+            }
+        }
+    });
+
     test('Basemaps include Maa-amet ortofoto and OpenTopoMap', async ({ page }) => {
         await page.goto('/menu/basemaps');
         await waitForMap(page);

@@ -56,6 +56,14 @@ const MAPLIBRE_WORKER_PROBE_URL = new URL('/maplibre-worker-probe.mjs', window.l
 const COT_SOURCE_RESYNC_TIMEOUT_MS = 10000;
 const MAPLIBRE_RECOVERY_RELOAD_KEY = 'cloudtak::maplibre-recovery-reloaded';
 const GRID_SOURCE_ID = 'cloudtak-mgrs-grid';
+/** Grid layer ids, bottom to top. Kept directly beneath the CoT layers by pinGridLayers(). */
+const GRID_LAYER_IDS = [
+    `${GRID_SOURCE_ID}-casing`,
+    `${GRID_SOURCE_ID}-lines`,
+    `${GRID_SOURCE_ID}-easting-labels`,
+    `${GRID_SOURCE_ID}-northing-labels`,
+    `${GRID_SOURCE_ID}-square-labels`,
+];
 const GRID_PREF_KEY = 'cloudtak::grid-enabled';
 
 function readGridPreference(): boolean {
@@ -620,7 +628,7 @@ export const useMapStore = defineStore('cloudtak', {
             const labelFilter = (role: string): mapgl.FilterSpecification => ['all', ['==', ['get', 'kind'], 'label'], ['==', ['get', 'role'], role]];
 
             const layers: LayerSpecification[] = [{
-                id: `${GRID_SOURCE_ID}-casing`,
+                id: GRID_LAYER_IDS[0],
                 type: 'line',
                 source: GRID_SOURCE_ID,
                 filter: ['==', ['get', 'kind'], 'line'],
@@ -631,7 +639,7 @@ export const useMapStore = defineStore('cloudtak', {
                     'line-opacity': 0.55,
                 }
             }, {
-                id: `${GRID_SOURCE_ID}-lines`,
+                id: GRID_LAYER_IDS[1],
                 type: 'line',
                 source: GRID_SOURCE_ID,
                 filter: ['==', ['get', 'kind'], 'line'],
@@ -643,7 +651,7 @@ export const useMapStore = defineStore('cloudtak', {
                 }
             }, {
                 // Easting values along the top edge of the view
-                id: `${GRID_SOURCE_ID}-easting-labels`,
+                id: GRID_LAYER_IDS[2],
                 type: 'symbol',
                 source: GRID_SOURCE_ID,
                 filter: labelFilter('easting'),
@@ -663,7 +671,7 @@ export const useMapStore = defineStore('cloudtak', {
                 }
             }, {
                 // Northing values along the left edge of the view
-                id: `${GRID_SOURCE_ID}-northing-labels`,
+                id: GRID_LAYER_IDS[3],
                 type: 'symbol',
                 source: GRID_SOURCE_ID,
                 filter: labelFilter('northing'),
@@ -684,7 +692,7 @@ export const useMapStore = defineStore('cloudtak', {
             }, {
                 // 100 km square identifier (e.g. "35V LF"), a tag in the top-left
                 // corner of each square's visible portion, beside the edge labels
-                id: `${GRID_SOURCE_ID}-square-labels`,
+                id: GRID_LAYER_IDS[4],
                 type: 'symbol',
                 source: GRID_SOURCE_ID,
                 filter: labelFilter('square'),
@@ -710,6 +718,28 @@ export const useMapStore = defineStore('cloudtak', {
             }
 
             this.refreshGrid();
+        },
+
+        /**
+         * Keep the grid directly beneath the CoT layers. Switching or adding a
+         * basemap inserts its layers right below the CoT layers too, which would
+         * otherwise put an opaque raster (e.g. Maa-amet ortofoto) on top of the
+         * grid. Runs on every styledata event; a no-op once the order is right.
+         */
+        pinGridLayers: function(): void {
+            if (!this.map || !this.map.getSource(GRID_SOURCE_ID)) return;
+
+            const layers = this.map.getStyle().layers;
+            const anchorIdx = layers.findIndex((l) => l.id.startsWith('-1-'));
+            if (anchorIdx === -1) return;
+
+            const inPlace = GRID_LAYER_IDS.every((id, i) => layers[anchorIdx - GRID_LAYER_IDS.length + i]?.id === id);
+            if (inPlace) return;
+
+            const anchor = layers[anchorIdx].id;
+            for (const id of GRID_LAYER_IDS) {
+                if (this.map.getLayer(id)) this.map.moveLayer(id, anchor);
+            }
         },
 
         /**
@@ -1440,6 +1470,10 @@ export const useMapStore = defineStore('cloudtak', {
             map.on('pitch', () => {
                 this.pitch = map.getPitch()
             })
+
+            map.on('styledata', () => {
+                this.pinGridLayers();
+            });
 
             map.on('moveend', async () => {
                 this.refreshGrid();
